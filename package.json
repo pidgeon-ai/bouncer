@@ -1,0 +1,44 @@
+{
+  "name": "bouncer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3100",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "demo": "tsx scripts/demo.ts",
+    "smoke": "tsx --env-file-if-exists=.env.local scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@pidgeon-ai/sdk": "^1.25.0",
+    "ai": "^7.0.152",
+    "next": "16.4.3",
+    "postgres": "^3.4.9",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vercel/config": "^0.13.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.5"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "description": "Forward a cold sales email; your AI says no for you. Built on Pidgeon.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
+}
