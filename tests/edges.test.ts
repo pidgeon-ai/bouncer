@@ -7,14 +7,13 @@ import { createHmac } from "node:crypto";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { addressCandidates } from "@/lib/bouncer";
 import { aiClassifier, keywordClassifier, looksAutomatic } from "@/lib/classify";
+import { loadConfig, missingConfig } from "@/lib/config";
 import { isCronRequest } from "@/lib/cron";
 import { cleanFirstName } from "@/lib/templates";
 
-import { SALES, USER, gmailForward, harness } from "./harness";
+import { OWNER, SALES, gmailForward, harness } from "./harness";
 
-const FRONT = "bouncer@pidgeon.ai";
 
 function sign(secret: string, body: string, timestamp = Math.floor(Date.now() / 1000)) {
   const mac = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
@@ -87,20 +86,21 @@ describe("model budget", () => {
     expect(await h.store.aiCallsToday(now)).toBe(3);
   });
 
-  it("'unsure' from the model means the user is asked, never an automatic reply", async () => {
+  it("'unsure' from the model means the owner is asked, never an automatic reply", async () => {
     // The real classifier with a budget of zero, so every verdict is 'unsure'.
     const { store } = await harness();
     const capped = aiClassifier({ store, model: "x", dailyCap: 0 });
-    const h2 = await harness({ classifier: capped });
-    await h2.receive({ to: FRONT, from: USER, fromName: "Patrick", subject: "Fwd: x", text: gmailForward() });
-    const preview = h2.to(USER).at(-1)!;
-    expect(preview.text).toContain("I couldn't tell whether this is a cold sales email");
-    await h2.receive({ to: FRONT, from: USER, subject: "Re: x", text: "yes", inReplyTo: preview.id });
-    // The user said yes, so this one goes; follow-ups the model can't judge go to the user.
-    const decline = h2.to(SALES)[0];
-    await h2.receive({ to: "patrick@bouncer.pidgeon.email", from: SALES, subject: "Re: x", text: "bump", inReplyTo: decline.id });
-    expect(h2.to(SALES)).toHaveLength(1);
-    expect(h2.pidgeon.forwards).toHaveLength(1);
+    const h = await harness({ classifier: capped, config: { defaultStyle: 1 } });
+    await h.receive({ from: OWNER, subject: "Fwd: x", text: gmailForward() });
+    const ask = h.to(OWNER).at(-1)!;
+    expect(ask.text).toContain("I couldn't tell whether this is a cold sales email");
+    expect(h.to(SALES)).toHaveLength(0);
+    await h.receive({ from: OWNER, subject: "Re: x", text: "yes", inReplyTo: ask.id });
+    // The owner said yes, so this one goes; follow-ups the model can't judge go to the owner.
+    const decline = h.to(SALES)[0];
+    await h.receive({ from: SALES, subject: "Re: x", text: "bump", inReplyTo: decline.id });
+    expect(h.to(SALES)).toHaveLength(1);
+    expect(h.pidgeon.forwards).toHaveLength(1);
   });
 
   it("the keyword fallback is timid", async () => {
@@ -119,35 +119,28 @@ describe("model budget", () => {
   });
 });
 
-describe("provisioning", () => {
-  it("skips taken addresses", async () => {
-    const h = await harness();
-    await h.pidgeon.mail.createAddress({ address: "patrick@bouncer.pidgeon.email", displayName: "", podId: "p", idempotencyKey: "k" });
-    await h.receive({ to: FRONT, from: USER, fromName: "Patrick", subject: "Fwd: x", text: gmailForward() });
-    await h.receive({ to: FRONT, from: USER, subject: "Re: x", text: "yes", inReplyTo: h.to(USER).at(-1)!.id });
-    expect((await h.store.getUser(USER))?.address).toBe("patrick-2@bouncer.pidgeon.email");
-  });
+describe("test mode", () => {
+  it("trusts unauthenticated test mail only with a test key and the switch on", async () => {
+    const h = await harness({ config: { pidgeonApiKey: "pgn_test_x", trustTestAuth: true, defaultStyle: 1 } });
+    const noAuth = { dmarc: null, spf: null, dkim: null };
+    await h.receive({ from: OWNER, subject: "Fwd: x", text: gmailForward(), ...noAuth, test: true });
+    expect(h.to(SALES)).toHaveLength(1);
 
-  it("makes safe local parts", () => {
-    expect(addressCandidates("Renée", "abcdef123")[0]).toBe("renee");
-    expect(addressCandidates(null, "abcdef123")[0]).toBe("inbox-2");
-    expect(addressCandidates("Admin", "abcdef123")[0]).toBe("admin-2");
-    expect(addressCandidates("Patrick", "abcdef123").at(-1)).toBe("patrick-abcdef");
-  });
-
-  it("in test mode, takes addresses from the pre-made pool and trusts test mail only", async () => {
-    const h = await harness({
-      config: { pidgeonApiKey: "pgn_test_x", trustTestAuth: true, testAddressPool: ["pool-1@bouncer.pidgeon.email"] },
-    });
-    await h.receive({ to: FRONT, from: USER, fromName: "Patrick", subject: "Fwd: x", text: gmailForward(), dmarc: null, spf: null, dkim: null, test: true });
-    await h.receive({ to: FRONT, from: USER, subject: "Re: x", text: "yes", inReplyTo: h.to(USER).at(-1)!.id, dmarc: null, spf: null, dkim: null, test: true });
-    expect((await h.store.getUser(USER))?.address).toBe("pool-1@bouncer.pidgeon.email");
-    expect(h.pidgeon.pods).toHaveLength(0);
-    expect(h.to(SALES)[0].from).toBe("pool-1@bouncer.pidgeon.email");
-
-    // The same unauthenticated mail, not marked test, gets nothing.
-    await h.receive({ to: FRONT, from: "x@y.com", subject: "Fwd: x", text: gmailForward(), dmarc: null, spf: null, dkim: null, test: false });
+    // The same mail, not marked test, gets nothing.
+    await h.receive({ from: OWNER, subject: "Fwd: y", text: gmailForward({ from: "x@y.com" }), ...noAuth, test: false });
     expect(h.to("x@y.com")).toHaveLength(0);
+  });
+});
+
+describe("configuration", () => {
+  it("names every missing setting", () => {
+    expect(missingConfig(loadConfig({}))).toEqual([
+      "BOUNCER_ADDRESS",
+      "BOUNCER_OWNER_EMAIL",
+      "PIDGEON_API_KEY",
+      "PIDGEON_WEBHOOK_SECRET",
+      "BOUNCER_LINK_SECRET",
+    ]);
   });
 });
 

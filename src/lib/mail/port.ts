@@ -4,7 +4,7 @@
  * `pidgeon.ts` implements this with the Pidgeon SDK; the tests implement it
  * with an in-memory fake that records every send. Keeping the seam this
  * narrow is what makes the safety rules testable: every email Bouncer can
- * ever send goes through `send`.
+ * ever send goes through `send` or `forward`, both called only from guard.ts.
  */
 
 export interface Mailbox {
@@ -66,14 +66,5 @@ export interface MailPort {
   forward(input: { messageId: string; to: string; text: string; idempotencyKey: string }): Promise<SentEmail>;
   /** Hand a thread to a person: the agent stops owning it. */
   handOff(threadId: string, reason: string): Promise<void>;
-  createPod(input: { name: string; clientId: string; idempotencyKey: string }): Promise<{ id: string }>;
-  /** Returns null when the address is already taken. */
-  createAddress(input: {
-    address: string;
-    displayName: string;
-    podId: string;
-    idempotencyKey: string;
-  }): Promise<{ id: string; email: string } | null>;
-  deleteAddress(id: string): Promise<void>;
   deleteMessages(ids: string[]): Promise<void>;
 }

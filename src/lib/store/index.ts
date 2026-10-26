@@ -15,23 +15,13 @@ export interface Sql {
   exec(text: string): Promise<void>;
 }
 
+/** 1 polite no · 2 not now, try next quarter · 3 ask me first. */
 export type Style = 1 | 2 | 3;
 
-export interface User {
-  email: string;
-  firstName: string | null;
-  status: "pending" | "verified";
-  style: Style;
-  podId: string | null;
-  identityId: string | null;
-  address: string | null;
-}
-
-export type CaseStatus = "preview" | "ask" | "declined" | "stopped" | "handed_off" | "dismissed";
+export type CaseStatus = "ask" | "declined" | "stopped" | "handed_off" | "dismissed";
 
 export interface Case {
   id: string;
-  userEmail: string;
   status: CaseStatus;
   reason: string | null;
   senderEmail: string;
@@ -45,32 +35,17 @@ export interface Case {
   createdAt: Date;
 }
 
-export type SendKind = "decline" | "stop" | "to_user";
+export type SendKind = "decline" | "stop" | "to_owner";
 
 export function hashEmail(email: string): string {
   return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
-/* Row mappers: snake_case in the database, camelCase in the code. */
-
 type Row = Record<string, unknown>;
-
-function toUser(row: Row): User {
-  return {
-    email: row.email as string,
-    firstName: (row.first_name as string) ?? null,
-    status: row.status as User["status"],
-    style: Number(row.style) as Style,
-    podId: (row.pod_id as string) ?? null,
-    identityId: (row.identity_id as string) ?? null,
-    address: (row.address as string) ?? null,
-  };
-}
 
 function toCase(row: Row): Case {
   return {
     id: row.id as string,
-    userEmail: row.user_email as string,
     status: row.status as CaseStatus,
     reason: (row.reason as string) ?? null,
     senderEmail: row.sender_email as string,
@@ -88,10 +63,6 @@ function toCase(row: Row): Case {
 const CASE_COLUMNS: Record<string, string> = {
   status: "status",
   reason: "reason",
-  senderName: "sender_name",
-  senderCompany: "sender_company",
-  subject: "subject",
-  summary: "summary",
   askThreadId: "ask_thread_id",
   outThreadId: "out_thread_id",
 };
@@ -106,69 +77,25 @@ export function createStore(sql: Sql) {
       await sql.exec(SCHEMA);
     },
 
-    /* ── Users ─────────────────────────────────────────────── */
+    /* ── The owner's style ─────────────────────────────────── */
 
-    async getUser(email: string): Promise<User | null> {
-      const [row] = await sql.query("select * from users where email = $1", [email]);
-      return row ? toUser(row) : null;
+    async style(fallback: Style): Promise<Style> {
+      const [row] = await sql.query<{ value: string }>("select value from settings where key = 'style'");
+      const value = Number(row?.value);
+      return value === 1 || value === 2 || value === 3 ? value : fallback;
     },
 
-    async getUserByAddress(address: string): Promise<User | null> {
-      const [row] = await sql.query("select * from users where address = $1", [address]);
-      return row ? toUser(row) : null;
-    },
-
-    async addPendingUser(email: string, firstName: string | null): Promise<User> {
+    async setStyle(style: Style): Promise<void> {
       await sql.query(
-        `insert into users (email, first_name) values ($1, $2)
-         on conflict (email) do update set first_name = coalesce(users.first_name, excluded.first_name)`,
-        [email, firstName],
+        `insert into settings (key, value) values ('style', $1)
+         on conflict (key) do update set value = excluded.value`,
+        [String(style)],
       );
-      return (await this.getUser(email))!;
-    },
-
-    async verifyUser(email: string, style: Style): Promise<void> {
-      await sql.query(
-        `update users set status = 'verified', style = $2, verified_at = coalesce(verified_at, now())
-         where email = $1`,
-        [email, style],
-      );
-    },
-
-    async setStyle(email: string, style: Style): Promise<void> {
-      await sql.query("update users set style = $2 where email = $1", [email, style]);
-    },
-
-    async setPod(email: string, podId: string): Promise<void> {
-      await sql.query("update users set pod_id = $2 where email = $1", [email, podId]);
-    },
-
-    async setAddress(email: string, identityId: string, address: string): Promise<void> {
-      await sql.query("update users set identity_id = $2, address = $3 where email = $1", [
-        email,
-        identityId,
-        address,
-      ]);
-    },
-
-    async addressTaken(address: string): Promise<boolean> {
-      const rows = await sql.query("select 1 from users where address = $1", [address]);
-      return rows.length > 0;
-    },
-
-    async deleteUser(email: string): Promise<void> {
-      await sql.query("delete from users where email = $1", [email]);
-    },
-
-    async verifiedUsers(): Promise<User[]> {
-      const rows = await sql.query("select * from users where status = 'verified' order by email");
-      return rows.map(toUser);
     },
 
     /* ── Cases: one per forwarded cold email ───────────────── */
 
     async createCase(input: {
-      userEmail: string;
       status: CaseStatus;
       reason?: string | null;
       senderEmail: string;
@@ -177,15 +104,15 @@ export function createStore(sql: Sql) {
       subject: string | null;
       summary: string | null;
       sourceMessageId: string;
-    }): Promise<Case> {
+    }): Promise<Case | null> {
       const id = randomUUID();
-      await sql.query(
-        `insert into cases (id, user_email, status, reason, sender_email, sender_name,
+      const rows = await sql.query(
+        `insert into cases (id, status, reason, sender_email, sender_name,
                             sender_company, subject, summary, source_message_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         on conflict (source_message_id) do nothing returning id`,
         [
           id,
-          input.userEmail,
           input.status,
           input.reason ?? null,
           input.senderEmail,
@@ -196,7 +123,7 @@ export function createStore(sql: Sql) {
           input.sourceMessageId,
         ],
       );
-      return (await this.getCase(id))!;
+      return rows.length ? this.getCase(id) : null; // null: this forward was already handled
     },
 
     async getCase(id: string): Promise<Case | null> {
@@ -217,14 +144,6 @@ export function createStore(sql: Sql) {
       return row ? toCase(row) : null;
     },
 
-    async caseBySource(userEmail: string, sourceMessageId: string): Promise<Case | null> {
-      const [row] = await sql.query(
-        "select * from cases where user_email = $1 and source_message_id = $2",
-        [userEmail, sourceMessageId],
-      );
-      return row ? toCase(row) : null;
-    },
-
     async updateCase(
       id: string,
       patch: Partial<Pick<Case, "status" | "reason" | "askThreadId" | "outThreadId">>,
@@ -239,11 +158,10 @@ export function createStore(sql: Sql) {
       ]);
     },
 
-    async declinesSince(userEmail: string, since: Date): Promise<number> {
-      const [row] = await sql.query<{ n: string }>(
-        "select count(*) as n from cases where user_email = $1 and declined_at >= $2",
-        [userEmail, since.toISOString()],
-      );
+    async declinesSince(since: Date): Promise<number> {
+      const [row] = await sql.query<{ n: string }>("select count(*) as n from cases where declined_at >= $1", [
+        since.toISOString(),
+      ]);
       return Number(row?.n ?? 0);
     },
 
@@ -254,11 +172,10 @@ export function createStore(sql: Sql) {
      * had one of this kind: the database refuses a second decline or a second
      * please-stop, whatever the code above it does.
      */
-    async claimSend(userEmail: string, caseId: string | null, kind: SendKind): Promise<boolean> {
+    async claimSend(caseId: string | null, kind: SendKind): Promise<boolean> {
       const rows = await sql.query(
-        `insert into sends (user_email, case_id, kind) values ($1, $2, $3)
-         on conflict do nothing returning id`,
-        [userEmail, caseId, kind],
+        "insert into sends (case_id, kind) values ($1, $2) on conflict do nothing returning id",
+        [caseId, kind],
       );
       return rows.length > 0;
     },
@@ -268,30 +185,15 @@ export function createStore(sql: Sql) {
       await sql.query("delete from sends where case_id = $1 and kind = $2", [caseId, kind]);
     },
 
-    async thirdPartySendsToday(now: Date, userEmail?: string): Promise<number> {
-      const params: unknown[] = [startOfUtcDay(now).toISOString()];
-      let filter = "";
-      if (userEmail) {
-        params.push(userEmail);
-        filter = "and user_email = $2";
-      }
+    async sendsToday(now: Date, kinds: SendKind[]): Promise<number> {
       const [row] = await sql.query<{ n: string }>(
-        `select count(*) as n from sends
-         where kind in ('decline', 'stop') and created_at >= $1 ${filter}`,
-        params,
+        "select count(*) as n from sends where kind = any($1) and created_at >= $2",
+        [kinds, startOfUtcDay(now).toISOString()],
       );
       return Number(row?.n ?? 0);
     },
 
-    async userMailToday(userEmail: string, now: Date): Promise<number> {
-      const [row] = await sql.query<{ n: string }>(
-        `select count(*) as n from sends where kind = 'to_user' and user_email = $1 and created_at >= $2`,
-        [userEmail, startOfUtcDay(now).toISOString()],
-      );
-      return Number(row?.n ?? 0);
-    },
-
-    /* ── Suppression and reports ───────────────────────────── */
+    /* ── Suppression ───────────────────────────────────────── */
 
     async isSuppressed(email: string): Promise<boolean> {
       const rows = await sql.query("select 1 from suppressions where email_hash = $1", [hashEmail(email)]);
@@ -301,13 +203,6 @@ export function createStore(sql: Sql) {
     async suppress(email: string): Promise<void> {
       await sql.query("insert into suppressions (email_hash) values ($1) on conflict do nothing", [
         hashEmail(email),
-      ]);
-    },
-
-    async addReport(email: string, note: string): Promise<void> {
-      await sql.query("insert into reports (email_hash, note) values ($1, $2)", [
-        hashEmail(email),
-        note.slice(0, 2000),
       ]);
     },
 

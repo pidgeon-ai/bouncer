@@ -1,6 +1,6 @@
 {
   "name": "bouncer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3100",
@@ -36,7 +36,7 @@
     "vitest": "^5.0.5"
   },
   "packageManager": "pnpm@10.33.0",
-  "description": "Forward a cold sales email; your AI says no for you. Built on Pidgeon.",
+  "description": "An email agent that declines cold sales email for you. Run it on your own Pidgeon account.",
   "license": "MIT",
   "engines": {
     "node": ">=22"

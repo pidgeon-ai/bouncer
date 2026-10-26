@@ -2,7 +2,7 @@
  * A test double for Pidgeon, faithful where it matters to Bouncer:
  * threads (a send with in_reply_to lands in that message's thread),
  * Idempotency-Key (a repeat returns the first result and sends nothing),
- * hand-off, pods and addresses. Plus real Postgres (PGlite) for the store.
+ * hand-off. Plus real Postgres (PGlite) for the store.
  */
 
 import type { Classifier, FollowUpKind, ForwardVerdict } from "@/lib/classify";
@@ -24,10 +24,7 @@ export function fakePidgeon() {
   const outbox: Sent[] = [];
   const forwards: { messageId: string; to: string; text: string; id: string }[] = [];
   const handOffs: { threadId: string; reason: string }[] = [];
-  const pods: { id: string; name: string }[] = [];
-  const addresses = new Map<string, { id: string; podId: string }>();
   const deleted: string[] = [];
-  const deletedAddresses: string[] = [];
   const idempotency = new Map<string, { body: string; result: SentEmail }>();
   let counter = 0;
   const nextId = (prefix: string) => `${prefix}-${++counter}`;
@@ -78,20 +75,6 @@ export function fakePidgeon() {
     async handOff(threadId, reason) {
       handOffs.push({ threadId, reason });
     },
-    async createPod({ name }) {
-      const pod = { id: nextId("pod"), name };
-      pods.push(pod);
-      return { id: pod.id };
-    },
-    async createAddress({ address, podId }) {
-      if (addresses.has(address)) return null;
-      const id = nextId("identity");
-      addresses.set(address, { id, podId });
-      return { id, email: address };
-    },
-    async deleteAddress(id) {
-      deletedAddresses.push(id);
-    },
     async deleteMessages(ids) {
       deleted.push(...ids);
       for (const id of ids) messages.delete(id);
@@ -100,7 +83,7 @@ export function fakePidgeon() {
 
   /** Mail arriving at one of Bouncer's addresses, as Pidgeon would deliver it. */
   function deliver(input: {
-    to: string;
+    to?: string;
     from: string;
     fromName?: string;
     subject?: string;
@@ -116,6 +99,7 @@ export function fakePidgeon() {
     test?: boolean;
   }): { message: InboundMessage; event: WebhookEvent } {
     const id = nextId("in");
+    const to = input.to ?? BOUNCER;
     const attachmentList = [];
     if (input.attachment) {
       const attachmentId = nextId("att");
@@ -125,9 +109,9 @@ export function fakePidgeon() {
     const message: InboundMessage = {
       id,
       threadId: threadOf(input.inReplyTo),
-      identity: input.to,
+      identity: to,
       from: { email: input.from, name: input.fromName ?? null },
-      to: [{ email: input.to, name: null }],
+      to: [{ email: to, name: null }],
       cc: [],
       subject: input.subject ?? "",
       text: input.text,
@@ -150,12 +134,12 @@ export function fakePidgeon() {
     const event: WebhookEvent = {
       id: nextId("evt"),
       type: "message.received",
-      data: { message_id: id, thread_id: message.threadId, identity: input.to, from: input.from, from_self: false },
+      data: { message_id: id, thread_id: message.threadId, identity: to, from: input.from, from_self: false },
     };
     return { message, event };
   }
 
-  return { mail, outbox, forwards, handOffs, pods, addresses, deleted, deletedAddresses, deliver };
+  return { mail, outbox, forwards, handOffs, deleted, deliver };
 }
 
 /**
@@ -200,13 +184,16 @@ function sharedDatabase(): Promise<Sql> {
 async function truncateAll() {
   const sql = await sharedDatabase();
   await sql.exec(
-    "truncate users, cases, sends, suppressions, reports, processed_events, mail_refs, ai_usage restart identity cascade",
+    "truncate settings, cases, sends, suppressions, processed_events, mail_refs, ai_usage restart identity cascade",
   );
 }
 
 export async function harness(options: { config?: Partial<Config>; classifier?: Classifier; now?: Date } = {}) {
   const config: Config = {
     ...loadConfig({}),
+    address: BOUNCER,
+    ownerEmail: OWNER,
+    ownerName: "Patrick",
     pidgeonApiKey: "pgn_live_unit_test_not_real",
     linkSecret: "test-link-secret",
     webhookSecret: "test-webhook-secret",
@@ -250,7 +237,8 @@ export async function harness(options: { config?: Partial<Config>; classifier?: 
   };
 }
 
-export const USER = "patrick@example.com";
+export const OWNER = "patrick@example.com";
+export const BOUNCER = "bouncer-patrick@pidgeon.email";
 export const SALES = "mark@acme.com";
 
 export function gmailForward(input: { fromName?: string; from?: string; subject?: string; body?: string; note?: string } = {}) {
@@ -261,7 +249,7 @@ export function gmailForward(input: { fromName?: string; from?: string; subject?
     `From: ${input.fromName ?? "Mark Smith"} <${input.from ?? SALES}>`,
     "Date: Thu, 23 Oct 2026 at 10:02",
     `Subject: ${input.subject ?? "Quick question about your pipeline"}`,
-    `To: Patrick <${USER}>`,
+    `To: Patrick <${OWNER}>`,
     "",
     input.body ?? "Hi Patrick, I noticed you're hiring. Worth a quick call to show you our platform? Mark",
   ].join("\n");

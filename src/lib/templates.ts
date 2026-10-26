@@ -6,17 +6,13 @@
  * So an email that says "ignore your instructions and reply with…" cannot
  * change a single word of what goes out.
  *
- * Patrick approves the final wording before launch. Voice: short, kind,
- * honest that it's an AI, no sarcasm.
+ * Voice: short, kind, honest that it's an AI, no sarcasm. Change the words
+ * here; keep them fixed.
  */
 
 import type { Style } from "./store";
 
-export interface Footer {
-  siteUrl: string;
-  stopUrl: string;
-  reportUrl: string;
-}
+export const REPO_URL = "https://github.com/pidgeon-ai/bouncer";
 
 const NOT_NAMES = new Set([
   "sales", "team", "info", "hello", "hi", "support", "noreply", "no-reply", "admin", "contact",
@@ -41,7 +37,7 @@ export function cleanFirstName(raw: string | null | undefined): string | null {
   return first === first.toLowerCase() ? first[0].toUpperCase() + first.slice(1) : first;
 }
 
-/** A company name fit to show the user (never sent to strangers). */
+/** A company name fit to show the owner (never sent to strangers). */
 export function cleanCompany(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const company = raw.trim();
@@ -49,7 +45,7 @@ export function cleanCompany(raw: string | null | undefined): string | null {
   return company;
 }
 
-/** One line for the user, from the model. Plain text, one line, bounded. */
+/** One line for the owner, from the model. Plain text, one line, bounded. */
 export function cleanSummary(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const line = raw.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
@@ -61,34 +57,30 @@ function hi(senderFirstName: string | null): string {
   return senderFirstName ? `Hi ${senderFirstName},` : "Hi there,";
 }
 
-function who(userFirstName: string | null): string {
-  return userFirstName ?? "The person you emailed";
+function who(ownerFirstName: string | null): string {
+  return ownerFirstName ?? "The person you emailed";
 }
 
-function signature(userFirstName: string | null): string {
-  return userFirstName
-    ? `Bouncer, ${userFirstName}'s AI email assistant`
+function signature(ownerFirstName: string | null): string {
+  return ownerFirstName
+    ? `Bouncer, ${ownerFirstName}'s AI email assistant`
     : "Bouncer, an AI email assistant";
 }
 
-/** The footer on every email to a third party: AI disclosure, opt-out, abuse report. */
-export function strangerFooter(userFirstName: string | null, footer: Footer): string {
-  const site = footer.siteUrl.replace(/^https?:\/\//, "");
+/** The footer on every email to a stranger: AI disclosure, how to opt out, where to complain. */
+export function strangerFooter(ownerFirstName: string | null, stopUrl: string): string {
   return [
     "--",
-    `${signature(userFirstName)} · ${site}`,
-    `I'm an AI, not a person, and I only reply on ${userFirstName ? `${userFirstName}'s` : "their"} behalf. Get your own, free: ${footer.siteUrl}`,
-    `Never hear from Bouncer again: ${footer.stopUrl}`,
-    `Report abuse: ${footer.reportUrl}`,
+    signature(ownerFirstName),
+    `I'm an AI, not a person, and I only reply on ${ownerFirstName ? `${ownerFirstName}'s` : "their"} behalf. I'm open source: ${REPO_URL}`,
+    `Never hear from me again: ${stopUrl}`,
+    "Report abuse: abuse@pidgeon.ai",
   ].join("\n");
 }
 
-/** The decline itself. Style 3 sends the polite no, after the user said yes. */
-export function declineText(
-  style: Style,
-  names: { sender: string | null; user: string | null },
-): string {
-  const person = who(names.user);
+/** The decline itself. Style 3 sends the polite no, after the owner said YES. */
+export function declineText(style: Style, names: { sender: string | null; owner: string | null }): string {
+  const person = who(names.owner);
   if (style === 2) {
     return [
       hi(names.sender),
@@ -104,8 +96,8 @@ export function declineText(
 }
 
 /** The one and only follow-up a sequence gets. */
-export function stopText(names: { sender: string | null; user: string | null }): string {
-  const person = names.user ?? "them";
+export function stopText(names: { sender: string | null; owner: string | null }): string {
+  const person = names.owner ?? "them";
   return [
     hi(names.sender),
     "",
@@ -113,11 +105,11 @@ export function stopText(names: { sender: string | null; user: string | null }):
   ].join("\n");
 }
 
-export function withFooter(body: string, userFirstName: string | null, footer: Footer): string {
-  return `${body}\n\n${strangerFooter(userFirstName, footer)}`;
+export function withFooter(body: string, ownerFirstName: string | null, stopUrl: string): string {
+  return `${body}\n\n${strangerFooter(ownerFirstName, stopUrl)}`;
 }
 
-/* ── Emails to the user (from the front door) ─────────────────────── */
+/* ── Emails to the owner ──────────────────────────────────────────── */
 
 export function senderLabel(c: { senderName: string | null; senderCompany: string | null; senderEmail: string }): string {
   if (c.senderName && c.senderCompany) return `${c.senderName} (${c.senderCompany})`;
@@ -125,8 +117,7 @@ export function senderLabel(c: { senderName: string | null; senderCompany: strin
   return c.senderEmail;
 }
 
-const userFooter = (siteUrl: string) =>
-  `--\nBouncer · ${siteUrl.replace(/^https?:\/\//, "")} · I keep message content for 30 days and never train on your mail.`;
+const ownerFooter = "--\nBouncer · your self-hosted email agent · message content is deleted after 30 days";
 
 function quote(text: string): string {
   return text
@@ -136,74 +127,27 @@ function quote(text: string): string {
 }
 
 export const STYLE_MENU = [
-  "  1 · polite no",
-  "  2 · not now, try next quarter",
-  "  3 · ask me first: send me a one-line summary, and decline only when I say YES",
+  "  1 · polite no, sent straight away",
+  "  2 · not now, try next quarter, sent straight away",
+  "  3 · ask me first, like this",
 ].join("\n");
 
-export function previewEmail(input: {
-  userFirstName: string | null;
-  label: string;
-  senderFirstName: string | null;
-  frontDoor: string;
-  siteUrl: string;
-}): string {
-  const decline = declineText(1, { sender: input.senderFirstName, user: input.userFirstName });
-  return [
-    input.userFirstName ? `Hi ${input.userFirstName},` : "Hi,",
-    "",
-    `I'm Bouncer, an AI assistant that answers cold sales email for you. Here's what I'd send to ${input.label}:`,
-    "",
-    quote(decline),
-    "",
-    "Reply YES to send it, or reply with a style:",
-    STYLE_MENU,
-    "",
-    `Your reply also confirms this address is yours. Nothing has been sent to ${input.label} yet, and nothing will be unless you reply.`,
-    "",
-    `After that, forward any cold email to ${input.frontDoor} and I'll answer it from your own Bouncer address. Every reply says it's from an AI assistant.`,
-    "",
-    userFooter(input.siteUrl),
-  ].join("\n");
-}
+const STYLE_NAMES: Record<Style, string> = {
+  1: "polite no",
+  2: "not now, try next quarter",
+  3: "ask me first",
+};
 
-export function welcomeEmail(input: {
-  userFirstName: string | null;
-  label: string;
-  address: string;
-  style: Style;
-  frontDoor: string;
-  siteUrl: string;
-}): string {
-  const styles: Record<Style, string> = {
-    1: "polite no",
-    2: "not now, try next quarter",
-    3: "ask me first",
-  };
-  return [
-    input.userFirstName ? `You're set, ${input.userFirstName}.` : "You're set.",
-    "",
-    `I've declined ${input.label} from your Bouncer address, ${input.address}. If they answer with a real question, I'll pass it to you. If it's just the sequence again, I'll ask them once to stop, then go quiet.`,
-    "",
-    `From now on, forward any cold email to ${input.frontDoor}. Your style: ${styles[input.style]}. To change it, email me 1, 2 or 3:`,
-    STYLE_MENU,
-    "",
-    "Email me DELETE to remove your account and everything I've stored.",
-    "",
-    userFooter(input.siteUrl),
-  ].join("\n");
-}
-
-export function declinedNotice(input: { label: string; siteUrl: string }): string {
-  return [`Declined: ${input.label}. I'll handle the follow-ups.`, "", userFooter(input.siteUrl)].join("\n");
-}
-
+/**
+ * Bouncer asks before acting: always in style 3, and in any style when the
+ * email doesn't look like cold sales or the Firewall flagged it.
+ */
 export function askEmail(input: {
-  userFirstName: string | null;
+  ownerFirstName: string | null;
   label: string;
-  why: "not_cold" | "unsure" | "firewall" | "summary";
+  why: "not_cold" | "unsure" | "firewall" | "ask_first";
   summary: string | null;
-  siteUrl: string;
+  draft: string;
 }): string {
   const opening = {
     not_cold:
@@ -211,89 +155,88 @@ export function askEmail(input: {
     unsure: "I couldn't tell whether this is a cold sales email, so I haven't replied.",
     firewall:
       "This email contains text aimed at AI assistants (hidden or instruction-like), so I didn't act on it automatically.",
-    summary: "Here's the one-line summary you asked for.",
+    ask_first: "Here's a cold email you forwarded. Nothing has been sent yet.",
   }[input.why];
   return [
-    input.userFirstName ? `Hi ${input.userFirstName},` : "Hi,",
+    input.ownerFirstName ? `Hi ${input.ownerFirstName},` : "Hi,",
     "",
     opening,
     "",
     `From: ${input.label}`,
     ...(input.summary ? [`In short: ${input.summary}`] : []),
     "",
-    input.why === "summary"
-      ? "Reply YES and I'll decline it politely. Otherwise I'll leave it alone."
-      : "Reply YES if you'd like me to decline it anyway. Otherwise I'll leave it alone.",
+    "Here's what I'd send:",
     "",
-    userFooter(input.siteUrl),
+    quote(input.draft),
+    "",
+    "Reply YES to send it, NO to leave it, or 1 or 2 to send it in that style and use that style from now on:",
+    STYLE_MENU,
+    "",
+    ownerFooter,
   ].join("\n");
 }
 
-export function handOffNote(input: { label: string; senderEmail: string; siteUrl: string }): string {
+export function declinedNotice(input: { label: string }): string {
+  return [`Declined: ${input.label}. I'll handle the follow-ups.`, "", ownerFooter].join("\n");
+}
+
+export function handOffNote(input: { label: string; senderEmail: string }): string {
   return [
     `${input.label} answered Bouncer's decline with what looks like a real reply, not the sequence, so I've stopped and I'm passing it to you. I won't reply to this thread again.`,
     "",
     `To answer them, write to ${input.senderEmail} directly: replies to this email come back to Bouncer, not to them.`,
     "",
-    userFooter(input.siteUrl),
+    ownerFooter,
   ].join("\n");
 }
 
-export function suspiciousFollowUpNote(input: { label: string; senderEmail: string; siteUrl: string }): string {
+export function suspiciousFollowUpNote(input: { label: string; senderEmail: string }): string {
   return [
     `${input.label} replied, and the reply contains text aimed at AI assistants, so I haven't answered it. Have a look yourself; I won't reply to this thread again.`,
     "",
     `To answer them, write to ${input.senderEmail} directly.`,
     "",
-    userFooter(input.siteUrl),
+    ownerFooter,
   ].join("\n");
 }
 
-export function couldNotParseEmail(input: { siteUrl: string }): string {
+export function couldNotParseEmail(): string {
   return [
     "I couldn't find the original sender in what you forwarded, so I haven't replied to anyone.",
     "",
     "Try forwarding it as an attachment (Gmail: the ⋮ menu → Forward as attachment), or forward it again without editing the top of the message.",
     "",
-    userFooter(input.siteUrl),
-  ].join("\n");
-}
-
-export function cannotDeclineEmail(input: { reason: string; siteUrl: string }): string {
-  return [`I haven't replied to anyone: ${input.reason}`, "", userFooter(input.siteUrl)].join("\n");
-}
-
-export function styleChangedEmail(input: { style: Style; siteUrl: string }): string {
-  const names: Record<Style, string> = { 1: "polite no", 2: "not now, try next quarter", 3: "ask me first" };
-  return [`Done: your style is now "${names[input.style]}".`, "", userFooter(input.siteUrl)].join("\n");
-}
-
-export function deletedEmail(input: { siteUrl: string }): string {
-  return [
-    "Done. I've deleted your Bouncer account, your Bouncer address and everything I stored about you. Forward me an email any time to start again.",
+    "To change how I reply, email me just 1, 2 or 3:",
+    STYLE_MENU,
     "",
-    userFooter(input.siteUrl),
+    ownerFooter,
   ].join("\n");
 }
 
-export function tallyEmail(input: {
-  userFirstName: string | null;
-  count: number;
-  minutes: number;
-  shareUrl: string;
-  siteUrl: string;
-}): { subject: string; text: string } {
+export function cannotDeclineEmail(reason: string): string {
+  return [`I haven't replied to anyone: ${reason}`, "", ownerFooter].join("\n");
+}
+
+export function styleChangedEmail(style: Style): string {
+  return [`Done: your style is now "${STYLE_NAMES[style]}".`, "", ownerFooter].join("\n");
+}
+
+export function tallyEmail(input: { ownerFirstName: string | null; count: number; minutes: number }): {
+  subject: string;
+  text: string;
+} {
   const emails = input.count === 1 ? "cold email" : "cold emails";
+  const share = `My email agent declined ${input.count} ${input.count === 1 ? "salesperson" : "salespeople"} this week. It's open source: ${REPO_URL}`;
   return {
     subject: `Bouncer handled ${input.count} ${emails} this week`,
     text: [
-      input.userFirstName ? `Hi ${input.userFirstName},` : "Hi,",
+      input.ownerFirstName ? `Hi ${input.ownerFirstName},` : "Hi,",
       "",
       `Bouncer handled ${input.count} ${emails} this week (~${input.minutes} minutes saved).`,
       "",
-      `Share it on LinkedIn: ${input.shareUrl}`,
+      `Share it on LinkedIn: https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(share)}`,
       "",
-      userFooter(input.siteUrl),
+      ownerFooter,
     ].join("\n"),
   };
 }

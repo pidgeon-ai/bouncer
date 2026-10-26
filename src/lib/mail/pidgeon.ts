@@ -2,13 +2,10 @@ import {
   attachmentsDownloadUrl,
   createClient,
   createConfig,
-  identitiesCreate,
-  identitiesDelete,
   messagesAct,
   messagesForward,
   messagesGet,
   messagesSend,
-  podsCreate,
   threadsUpdate,
 } from "@pidgeon-ai/sdk";
 
@@ -98,43 +95,6 @@ export function pidgeonMail(config: Pick<Config, "pidgeonApiKey" | "pidgeonBaseU
         body: { owner_type: "human", status: "human_review", reason },
         throwOnError: true,
       });
-    },
-
-    async createPod({ name, clientId, idempotencyKey }) {
-      const { data } = await podsCreate({
-        client,
-        body: { name, client_id: clientId },
-        headers: { "Idempotency-Key": idempotencyKey },
-        throwOnError: true,
-      });
-      return { id: data.data.id };
-    },
-
-    async createAddress({ address, displayName, podId, idempotencyKey }) {
-      const { data, error } = await identitiesCreate({
-        client,
-        body: {
-          address,
-          display_name: displayName,
-          pod_id: podId,
-          type: "agent",
-          mode: "automated",
-          // The salesperson never wrote to this address (they wrote to the
-          // user), so `reply_only` would refuse the decline. Who it may write
-          // to is enforced in guard.ts instead, before every send.
-          send_policy: "open",
-        },
-        headers: { "Idempotency-Key": idempotencyKey },
-      });
-      if (error) {
-        if (error.error.code === "conflict") return null;
-        throw new Error(error.error.message);
-      }
-      return { id: data.data.id, email: data.data.email.toLowerCase() };
-    },
-
-    async deleteAddress(id) {
-      await identitiesDelete({ client, path: { id }, throwOnError: true });
     },
 
     async deleteMessages(ids) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { decodeWords, parseInlineForward, parseMailbox, parseRfc822, stripForwardPrefix } from "@/lib/forward";
 
-import { SALES, USER, harness } from "./harness";
+import { OWNER, SALES, harness } from "./harness";
 
 describe("inline forwards", () => {
   it("Gmail", () => {
@@ -72,13 +72,12 @@ describe("forwarded as attachment", () => {
   it("is preferred over the inline text", async () => {
     const h = await harness();
     await h.receive({
-      to: "bouncer@pidgeon.ai",
-      from: USER,
+      from: OWNER,
       subject: "Fwd: Quick question",
       text: "see attached",
       attachment: { filename: "Quick question.eml", contentType: "message/rfc822", content: eml },
     });
-    expect(h.to(USER).at(-1)!.text).toContain("Here's what I'd send to Renée <renee@vendor.fr>");
+    expect(h.to(OWNER).at(-1)!.text).toContain("From: Renée <renee@vendor.fr>");
     expect(h.to(SALES)).toHaveLength(0);
   });
 });

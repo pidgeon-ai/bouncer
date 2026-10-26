@@ -1,29 +1,18 @@
 @import "tailwindcss";
 
-/*
- * Pidgeon's identity, "Registered flight": warm paper, cool slate ink,
- * Archivo across its width axis, IBM Plex Mono for everything a machine
- * wrote, corner ticks instead of boxes. No accent hue, light only.
- * Values from the Pidgeon brand guide (docs/brand.md in the Pidgeon repo).
- */
+/* Warm paper and slate ink, light only. Kept plain: this page is for whoever runs Bouncer. */
 :root {
   --background: oklch(97.3% 0.0055 88);
   --card: oklch(99.2% 0.003 88);
-  --muted: oklch(95.1% 0.006 88);
   --border: oklch(88% 0.006 250);
-  --rule: var(--border);
   --muted-foreground: oklch(47% 0.014 252);
   --foreground: oklch(20.5% 0.013 252);
-  --radius: 0.25rem;
-  /* A tile of fractal noise at 3.5%: paper has a surface. */
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23g)' opacity='0.035'/%3E%3C/svg%3E");
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-card: var(--card);
-  --color-muted: var(--muted);
   --color-border: var(--border);
   --color-muted-foreground: var(--muted-foreground);
   --color-foreground: var(--foreground);
@@ -32,95 +21,9 @@
 }
 
 body {
-  background-color: var(--background);
-  background-image: var(--grain);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-}
-
-/* Display width for headlines; 100 for everything a person reads. */
-.headline {
-  font-weight: 600;
-  font-variation-settings: "wdth" 118;
-  letter-spacing: -0.032em;
-  line-height: 0.92;
-  text-wrap: balance;
-}
-
-.widest {
-  font-variation-settings: "wdth" 125;
-}
-
-/* The machine voice: labels, addresses, anything the product generated. */
-.eyebrow {
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
-  font-size: 0.6875rem;
-  line-height: 1.2;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  font-weight: 500;
-}
-
-@media (max-width: 639px) {
-  .eyebrow {
-    font-size: 0.75rem;
-    letter-spacing: 0.1em;
-  }
-}
-
-.machine {
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-/* Registration marks: four 9px corner ticks locate a thing without boxing it. */
-.plate {
-  position: relative;
-  border-radius: var(--radius);
-}
-
-.plate-marks {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.plate::before,
-.plate::after,
-.plate > .plate-marks::before,
-.plate > .plate-marks::after {
-  content: "";
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  pointer-events: none;
-  border-color: var(--rule);
-  border-style: solid;
-}
-
-.plate::before {
-  top: 0;
-  left: 0;
-  border-width: 1px 0 0 1px;
-}
-
-.plate::after {
-  right: 0;
-  bottom: 0;
-  border-width: 0 1px 1px 0;
-}
-
-.plate > .plate-marks::before {
-  top: 0;
-  right: 0;
-  border-width: 1px 1px 0 0;
-}
-
-.plate > .plate-marks::after {
-  bottom: 0;
-  left: 0;
-  border-width: 0 0 1px 1px;
 }
 
 a {

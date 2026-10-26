@@ -27,7 +27,4 @@ jobs:
         run: pnpm smoke
         env:
           PIDGEON_API_KEY: ${{ env.PIDGEON_TEST_API_KEY }}
-          BOUNCER_FRONT_DOOR: ${{ vars.BOUNCER_TEST_FRONT_DOOR }}
-          BOUNCER_PERSONAL_DOMAIN: ${{ vars.BOUNCER_TEST_PERSONAL_DOMAIN }}
-          BOUNCER_TEST_ADDRESS_POOL: ${{ vars.BOUNCER_TEST_ADDRESS_POOL }}
-          BOUNCER_TRUST_TEST_AUTH: "1"
+          BOUNCER_ADDRESS: ${{ vars.BOUNCER_TEST_ADDRESS }}
