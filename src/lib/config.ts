@@ -24,7 +24,12 @@ export interface Config {
   siteUrl: string;
   /** Pidgeon API key: a `send` key on Bouncer's address. pgn_test_… for development and CI. */
   pidgeonApiKey: string;
-  pidgeonBaseUrl?: string;
+  /**
+   * The API's root. Defaults to production: the SDK's client has no base URL
+   * of its own, and without one every call went to a relative path and
+   * failed ("Failed to parse URL from /test/inbound", 26 October).
+   */
+  pidgeonBaseUrl: string;
   /** Secret for verifying Pidgeon webhook signatures. */
   webhookSecret: string;
   /** Secret for signing stop links. */
@@ -65,7 +70,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     defaultStyle: style(env.BOUNCER_STYLE),
     siteUrl: (env.BOUNCER_SITE_URL ?? "http://localhost:3100").replace(/\/$/, ""),
     pidgeonApiKey: env.PIDGEON_API_KEY ?? "",
-    pidgeonBaseUrl: env.PIDGEON_BASE_URL || undefined,
+    pidgeonBaseUrl: (env.PIDGEON_BASE_URL || "https://pidgeon.ai/api/v1").replace(/\/$/, ""),
     webhookSecret: env.PIDGEON_WEBHOOK_SECRET ?? "",
     linkSecret: env.BOUNCER_LINK_SECRET ?? "",
     cronSecret: env.CRON_SECRET ?? "",

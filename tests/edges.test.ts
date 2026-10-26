@@ -160,3 +160,17 @@ describe("names", () => {
     expect(cleanFirstName(raw)).toBe(expected);
   });
 });
+
+describe("the Pidgeon API's address", () => {
+  // Unset, every call went to a relative path and failed on the first one
+  // (the smoke against production, 26 October).
+  it("is production when nothing says otherwise", () => {
+    expect(loadConfig({}).pidgeonBaseUrl).toBe("https://pidgeon.ai/api/v1");
+  });
+
+  it("is whatever PIDGEON_BASE_URL says, without a trailing slash", () => {
+    expect(loadConfig({ PIDGEON_BASE_URL: "http://localhost:3000/api/v1/" }).pidgeonBaseUrl).toBe(
+      "http://localhost:3000/api/v1",
+    );
+  });
+});
